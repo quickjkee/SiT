@@ -35,11 +35,27 @@ import cv2
 from util.fid import calculate_fid
 from util.fid import calculate_fid
 import shutil
+import re
 
 
 #################################################################################
 #                             Training Helper Functions                         #
 #################################################################################
+
+def get_latest_checkpoint(dir_path: str) -> str | None:
+    pattern = re.compile(r'^(\d{7})\.pt$')
+    max_step = -1
+    latest_ckpt = None
+
+    for fname in os.listdir(dir_path):
+        match = pattern.match(fname)
+        if match:
+            step = int(match.group(1))
+            if step > max_step:
+                max_step = step
+                latest_ckpt = os.path.join(dir_path, fname)
+
+    return latest_ckpt
 
 @torch.no_grad()
 def update_ema(ema_model, model, decay=0.9999):
@@ -186,6 +202,14 @@ def main(args):
         ema.load_state_dict(state_dict["ema"])
         opt.load_state_dict(state_dict["opt"])
         args = state_dict["args"]
+    else:
+        ckpt_path = get_latest_checkpoint(checkpoint_dir)
+        if ckpt_path:
+            state_dict = torch.load(ckpt_path, map_location=lambda storage, loc: storage, weights_only=False)
+            model.module.load_state_dict(state_dict["model"])
+            ema.load_state_dict(state_dict["ema"])
+            opt["adamw"].load_state_dict(state_dict["opt_adamw"])
+            args = state_dict["args"]
 
     # Setup data:
     transform = transforms.Compose([
