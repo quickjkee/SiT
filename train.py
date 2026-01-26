@@ -19,6 +19,7 @@ from collections import OrderedDict
 from PIL import Image
 from copy import deepcopy
 from glob import glob
+from yt_tools.nirvana_utils import copy_snapshot_to_out, copy_out_to_snapshot
 from time import time
 import argparse
 import logging
@@ -30,6 +31,10 @@ from transport import create_transport, Sampler
 from diffusers.models import AutoencoderKL
 from train_utils import parse_transport_args
 import wandb_utils
+import cv2
+from util.fid import calculate_fid
+from util.fid import calculate_fid
+import shutil
 
 
 #################################################################################
@@ -116,6 +121,7 @@ def main(args):
     # Setup DDP:
     dist.init_process_group("nccl")
     assert args.global_batch_size % dist.get_world_size() == 0, f"Batch size must be divisible by world size."
+    world_size = dist.get_world_size()
     rank = dist.get_rank()
     device = rank % torch.cuda.device_count()
     seed = args.global_seed * dist.get_world_size() + rank
@@ -155,14 +161,6 @@ def main(args):
     # Note that parameter initialization is done within the SiT constructor
     ema = deepcopy(model).to(device)  # Create an EMA of the model for use after training
 
-    if args.ckpt is not None:
-        ckpt_path = args.ckpt
-        state_dict = find_model(ckpt_path)
-        model.load_state_dict(state_dict["model"])
-        ema.load_state_dict(state_dict["ema"])
-        opt.load_state_dict(state_dict["opt"])
-        args = state_dict["args"]
-
     requires_grad(ema, False)
     
     model = DDP(model.to(device), device_ids=[device])
@@ -179,6 +177,15 @@ def main(args):
 
     # Setup optimizer (we used default Adam betas=(0.9, 0.999) and a constant learning rate of 1e-4 in our paper):
     opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0)
+
+
+    if args.ckpt is not None:
+        ckpt_path = args.ckpt
+        state_dict = find_model(ckpt_path)
+        model.load_state_dict(state_dict["model"])
+        ema.load_state_dict(state_dict["ema"])
+        opt.load_state_dict(state_dict["opt"])
+        args = state_dict["args"]
 
     # Setup data:
     transform = transforms.Compose([
@@ -288,6 +295,7 @@ def main(args):
                     }
                     checkpoint_path = f"{checkpoint_dir}/{train_steps:07d}.pt"
                     torch.save(checkpoint, checkpoint_path)
+                    copy_out_to_snapshot(experiment_dir)
                     logger.info(f"Saved checkpoint to {checkpoint_path}")
                 dist.barrier()
             
@@ -308,8 +316,69 @@ def main(args):
                     wandb_utils.log_image(out_samples, train_steps)
                 logging.info("Generating EMA samples done.")
 
-    model.eval()  # important! This disables randomized embedding dropout
-    # do any sampling/FID calculation/etc. with ema (or model) in eval mode ...
+            if epoch % args.eval_freq == 0 or epoch + 1 == args.epochs:
+                torch.cuda.empty_cache()
+                batch_size = 64
+                num_steps = 50_000 // (batch_size * world_size) + 1
+
+                sample_fn = transport_sampler.sample_ode() # default to ode sampling
+
+                with torch.no_grad():
+                    save_folder = os.path.join(
+                        experiment_dir,
+                        "samples"
+                    )
+                    if rank == 0 and not os.path.exists(save_folder):
+                        os.makedirs(save_folder)
+                    
+                    class_label_gen_world = np.arange(0, 1000).repeat(50_000 // 1000)
+                    class_label_gen_world = np.hstack([class_label_gen_world, np.zeros(50000)])
+
+                    for i in range(num_steps):
+                        print("Generation step {}/{}".format(i, num_steps))
+                        start_idx = world_size * batch_size * i + rank * batch_size
+                        end_idx = start_idx + batch_size
+                        labels_gen = class_label_gen_world[start_idx:end_idx]
+                        labels_gen = torch.Tensor(labels_gen).long().to(device)
+
+                        with torch.amp.autocast('cuda', dtype=torch.bfloat16):
+                            zs_ = torch.randn(labels_gen.size(0), 4, latent_size, latent_size, device=device)
+                            zs_ = torch.cat([zs_, zs_], 0)
+                            y_ = torch.cat([labels_gen, torch.tensor([1000] * labels_gen.size(0), device=device)], 0)
+
+                            samples = sample_fn(zs_, model_fn, 
+                                                **dict(y=y_, cfg_scale=args.cfg_scale))[-1]
+                            dist.barrier()
+
+                            if use_cfg: #remove null samples
+                                samples, _ = samples.chunk(2, dim=0)
+                            samples = vae.decode(samples / 0.18215).sample
+            
+                        samples = (samples + 1) / 2
+                        samples = samples.detach().cpu()
+
+                        for b_id in range(samples.size(0)):
+                            img_id = i * samples.size(0) * world_size + rank * samples.size(0) + b_id
+                            if img_id >= 50_000:
+                                break
+                            gen_img = np.round(np.clip(samples[b_id].to(float).numpy().transpose([1, 2, 0]) * 255, 0, 255))
+                            gen_img = gen_img.astype(np.uint8)[:, :, ::-1]
+                            cv2.imwrite(os.path.join(save_folder, '{}.png'.format(str(img_id).zfill(5))), gen_img)
+                        
+                    if rank == 0:
+                        if args.image_size == 256:
+                            fid_statistics_file = 'fid_stats/jit_in256_stats.npz'
+                        elif args.image_size == 512:
+                            fid_statistics_file = 'fid_stats/jit_in512_stats.npz'
+                        else:
+                            raise NotImplementedError
+                        fid = calculate_fid(save_folder, fid_statistics_file, inception_path='fid_stats/pt_inception-2015-12-05-6726825d.pth')
+                        logger.info("FID: {:.4f}".format(fid))
+                        shutil.rmtree(save_folder)
+
+                    dist.barrier()
+
+    model.eval() 
 
     logger.info("Done!")
     cleanup()
