@@ -147,7 +147,7 @@ def main(args):
     local_batch_size = int(args.global_batch_size // dist.get_world_size())
 
     # Setup an experiment folder:
-    if rank == 0:
+    if True:
         os.makedirs(args.results_dir, exist_ok=True)  # Make results folder (holds all experiment subfolders)
         experiment_index = len(glob(f"{args.results_dir}/*"))
         model_string_name = args.model.replace("/", "-")  # e.g., SiT-XL/2 --> SiT-XL-2 (for naming folders)
@@ -158,11 +158,6 @@ def main(args):
         os.makedirs(checkpoint_dir, exist_ok=True)
         logger = create_logger(experiment_dir)
         logger.info(f"Experiment directory created at {experiment_dir}")
-
-        entity = os.environ["ENTITY"]
-        project = os.environ["PROJECT"]
-        if args.wandb:
-            wandb_utils.initialize(args, entity, experiment_name, project)
     else:
         logger = create_logger(None)
 
@@ -422,6 +417,7 @@ if __name__ == "__main__":
     parser.add_argument("--vae", type=str, choices=["ema", "mse"], default="ema")  # Choice doesn't affect training
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--log-every", type=int, default=100)
+    parser.add_argument("--eval_freq", type=int, default=20)
     parser.add_argument("--ckpt-every", type=int, default=50_000)
     parser.add_argument("--sample-every", type=int, default=10_000)
     parser.add_argument("--cfg-scale", type=float, default=4.0)
