@@ -30,9 +30,7 @@ from download import find_model
 from transport import create_transport, Sampler
 from diffusers.models import AutoencoderKL
 from train_utils import parse_transport_args
-#import wandb_utils
 import cv2
-from util.fid import calculate_fid
 from util.fid import calculate_fid
 import shutil
 import re
@@ -166,7 +164,9 @@ def main(args):
     latent_size = args.image_size // 8
     model = SiT_models[args.model](
         input_size=latent_size,
-        num_classes=args.num_classes
+        num_classes=args.num_classes,
+        in_context_len=args.in_context_len,
+        in_context_start=args.in_context_start
     )
 
     # Note that parameter initialization is done within the SiT constructor
@@ -293,11 +293,6 @@ def main(args):
                 dist.all_reduce(avg_loss, op=dist.ReduceOp.SUM)
                 avg_loss = avg_loss.item() / dist.get_world_size()
                 logger.info(f"(step={train_steps:07d}) Train Loss: {avg_loss:.4f}, Train Steps/Sec: {steps_per_sec:.2f}")
-                if args.wandb:
-                    wandb_utils.log(
-                        { "train loss": avg_loss, "train steps/sec": steps_per_sec },
-                        step=train_steps
-                    )
                 # Reset monitoring variables:
                 running_loss = 0
                 log_steps = 0
@@ -331,8 +326,6 @@ def main(args):
                     out_samples = torch.zeros((args.global_batch_size, 3, args.image_size, args.image_size), device=device)
                     dist.all_gather_into_tensor(out_samples, samples)
 
-                if args.wandb:
-                    wandb_utils.log_image(out_samples, train_steps)
                 logging.info("Generating EMA samples done.")
 
         if epoch % args.eval_freq == 0 or epoch + 1 == args.epochs:
@@ -421,6 +414,9 @@ if __name__ == "__main__":
     parser.add_argument("--ckpt-every", type=int, default=50_000)
     parser.add_argument("--sample-every", type=int, default=10_000)
     parser.add_argument("--cfg-scale", type=float, default=4.0)
+    parser.add_argument("--in", type=float, default=4.0)
+    parser.add_argument("--in_context_start", type=int, default=0)
+    parser.add_argument("--in_context_len", type=int, default=0)
     parser.add_argument("--wandb", action="store_true")
     parser.add_argument("--ckpt", type=str, default=None,
                         help="Optional path to a custom SiT checkpoint")

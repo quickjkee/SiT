@@ -155,6 +155,8 @@ class SiT(nn.Module):
         class_dropout_prob=0.1,
         num_classes=1000,
         learn_sigma=True,
+        in_context_len=0,
+        in_context_start=0
     ):
         super().__init__()
         self.learn_sigma = learn_sigma
@@ -162,6 +164,8 @@ class SiT(nn.Module):
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
         self.patch_size = patch_size
         self.num_heads = num_heads
+        self.in_context_len = in_context_len
+        self.in_context_start = in_context_start
 
         self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size)
@@ -169,6 +173,11 @@ class SiT(nn.Module):
         num_patches = self.x_embedder.num_patches
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
+
+        # in-context cls token
+        if self.in_context_len > 0:
+            self.register_tokens = nn.Parameter(torch.zeros(1, self.in_context_len, hidden_size), requires_grad=True)
+            torch.nn.init.normal_(self.register_tokens, std=.02)
 
         self.blocks = nn.ModuleList([
             SiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio) for _ in range(depth)
@@ -238,8 +247,14 @@ class SiT(nn.Module):
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
         c = t + y                                # (N, D)
-        for block in self.blocks:
+
+        for i, block in enumerate(self.blocks):
+            if self.in_context_len > 0 and i == self.in_context_start:
+                register_tokens = self.register_tokens.expand(x.shape[0], -1, -1)
+                x = torch.cat([register_tokens, x], dim=1)
             x = block(x, c)                      # (N, T, D)
+
+        x = x[:, self.in_context_len:]
         x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
         if self.learn_sigma:
