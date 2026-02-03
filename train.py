@@ -353,13 +353,13 @@ def main(args):
                     labels_gen = class_label_gen_world[start_idx:end_idx]
                     labels_gen = torch.Tensor(labels_gen).long().to(device)
 
-                    with torch.amp.autocast('cuda', dtype=torch.bfloat16):
+                    if True: #with torch.amp.autocast('cuda', dtype=torch.bfloat16):
                         zs_ = torch.randn(labels_gen.size(0), 4, latent_size, latent_size, device=device)
                         zs_ = torch.cat([zs_, zs_], 0)
                         y_ = torch.cat([labels_gen, torch.tensor([1000] * labels_gen.size(0), device=device)], 0)
 
                         samples = sample_fn(zs_, model_fn, 
-                                                **dict(y=y_, cfg_scale=args.cfg_scale))[-1]
+                                            **dict(y=y_, cfg_scale=args.cfg_scale))[-1]
                         dist.barrier()
 
                         if use_cfg: #remove null samples
@@ -413,7 +413,7 @@ if __name__ == "__main__":
     parser.add_argument("--eval_freq", type=int, default=20)
     parser.add_argument("--ckpt-every", type=int, default=50_000)
     parser.add_argument("--sample-every", type=int, default=10_000)
-    parser.add_argument("--cfg-scale", type=float, default=4.0)
+    parser.add_argument("--cfg-scale", type=float, default=1.5)
     parser.add_argument("--in", type=float, default=4.0)
     parser.add_argument("--in_context_start", type=int, default=0)
     parser.add_argument("--in_context_len", type=int, default=0)

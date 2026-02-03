@@ -342,7 +342,7 @@ class Sampler:
         self,
         *,
         sampling_method="dopri5",
-        num_steps=50,
+        num_steps=250,
         atol=1e-6,
         rtol=1e-3,
         reverse=False,
