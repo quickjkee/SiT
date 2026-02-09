@@ -147,9 +147,8 @@ def main(args):
     # Setup an experiment folder:
     if True:
         os.makedirs(args.results_dir, exist_ok=True)  # Make results folder (holds all experiment subfolders)
-        experiment_index = len(glob(f"{args.results_dir}/*"))
         model_string_name = args.model.replace("/", "-")  # e.g., SiT-XL/2 --> SiT-XL-2 (for naming folders)
-        experiment_name = f"{experiment_index:03d}-{model_string_name}-" \
+        experiment_name = f"{model_string_name}-" \
                         f"{args.path_type}-{args.prediction}-{args.loss_weight}"
         experiment_dir = f"{args.results_dir}/{experiment_name}"  # Create an experiment folder
         checkpoint_dir = f"{experiment_dir}/checkpoints"  # Stores saved model checkpoints
@@ -194,8 +193,12 @@ def main(args):
         state_dict = torch.load(ckpt_path, map_location=lambda storage, loc: storage, weights_only=False)
         model.module.load_state_dict(state_dict["model"])
         ema.load_state_dict(state_dict["ema"])
-        opt["adamw"].load_state_dict(state_dict["opt_adamw"])
+        opt.load_state_dict(state_dict["opt"])
         args = state_dict["args"]
+        train_steps, start_epoch = state_dict["train_steps"], state_dict["epoch"]
+    else:
+        train_steps = 0
+        start_epoch = state_dict["epoch"]
 
     # Setup data:
     transform = transforms.Compose([
@@ -229,7 +232,6 @@ def main(args):
     ema.eval()  # EMA model should always be in eval mode
 
     # Variables for monitoring/logging purposes:
-    train_steps = 0
     log_steps = 0
     running_loss = 0
     start_time = time()
@@ -253,7 +255,7 @@ def main(args):
         model_fn = ema.forward
 
     logger.info(f"Training for {args.epochs} epochs...")
-    for epoch in range(args.epochs):
+    for epoch in range(start_epoch, args.epochs):
         sampler.set_epoch(epoch)
         logger.info(f"Beginning epoch {epoch}...")
         for x, y in loader:
@@ -297,7 +299,7 @@ def main(args):
                         "ema": ema.state_dict(),
                         "opt": opt.state_dict(),
                         "args": args,
-                        "epoch": epoch
+                        "epoch": epoch, "train_steps": train_steps
                     }
                     checkpoint_path = f"{checkpoint_dir}/{train_steps:07d}.pt"
                     torch.save(checkpoint, checkpoint_path)
