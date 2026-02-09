@@ -198,7 +198,7 @@ def main(args):
         train_steps, start_epoch = state_dict["train_steps"], state_dict["epoch"]
     else:
         train_steps = 0
-        start_epoch = state_dict["epoch"]
+        start_epoch = 0
 
     # Setup data:
     transform = transforms.Compose([
@@ -303,7 +303,7 @@ def main(args):
                     }
                     checkpoint_path = f"{checkpoint_dir}/{train_steps:07d}.pt"
                     torch.save(checkpoint, checkpoint_path)
-                    copy_out_to_snapshot(experiment_dir)
+                    copy_out_to_snapshot(args.results_dir)
                     logger.info(f"Saved checkpoint to {checkpoint_path}")
                 dist.barrier()
             
