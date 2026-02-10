@@ -44,6 +44,9 @@ def get_latest_checkpoint(dir_path: str) -> str | None:
     pattern = re.compile(r'^(\d{7})\.pt$')
     max_step = -1
     latest_ckpt = None
+    print(dir_path)
+    print(pattern)
+    print(os.listdir(dir_path))
 
     for fname in os.listdir(dir_path):
         match = pattern.match(fname)
@@ -52,6 +55,8 @@ def get_latest_checkpoint(dir_path: str) -> str | None:
             if step > max_step:
                 max_step = step
                 latest_ckpt = os.path.join(dir_path, fname)
+                print(hui)
+    print(hui)
 
     return latest_ckpt
 
