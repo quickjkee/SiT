@@ -51,7 +51,6 @@ def get_latest_checkpoint(dir_path: str, checkpoint_dir_potential_previous) -> s
     print(os.listdir(dir_path))
     print(checkpoint_dir_potential_previous)
     
-
     checkpoint_dir = Path(checkpoint_dir_potential_previous)
     target_dir = Path(dir_path)
     if checkpoint_dir.exists() and any(checkpoint_dir.iterdir()):
@@ -215,7 +214,6 @@ def main(args):
         args = state_dict["args"]
         train_steps, start_epoch = state_dict["train_steps"], state_dict["epoch"]
         print('Downloaded')
-        print(hui)
     else:
         train_steps = 0
         start_epoch = 0
