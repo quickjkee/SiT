@@ -34,19 +34,33 @@ import cv2
 from util.fid import calculate_fid
 import shutil
 import re
+from pathlib import Path
+import shutil
 
 
 #################################################################################
 #                             Training Helper Functions                         #
 #################################################################################
 
-def get_latest_checkpoint(dir_path: str) -> str | None:
+def get_latest_checkpoint(dir_path: str, checkpoint_dir_potential_previous) -> str | None:
     pattern = re.compile(r'^(\d{7})\.pt$')
     max_step = -1
     latest_ckpt = None
     print(dir_path)
     print(pattern)
     print(os.listdir(dir_path))
+    print(checkpoint_dir_potential_previous)
+    
+
+    checkpoint_dir = Path(checkpoint_dir_potential_previous)
+    target_dir = Path(dir_path)
+    if checkpoint_dir.exists() and any(checkpoint_dir.iterdir()):
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for item in checkpoint_dir.iterdir():
+            shutil.move(str(item), target_dir / item.name)
+        print(f"Moved files from {checkpoint_dir} to {target_dir}")
+    else:
+        print("No files to move.")
 
     for fname in os.listdir(dir_path):
         match = pattern.match(fname)
@@ -155,6 +169,7 @@ def main(args):
                         f"{args.path_type}-{args.prediction}-{args.loss_weight}"
         experiment_dir = f"{args.results_dir}/{experiment_name}"  # Create an experiment folder
         checkpoint_dir = f"{experiment_dir}/checkpoints"  # Stores saved model checkpoints
+        checkpoint_dir_potential_previous = f"/slot/sandbox/d/in/data/0_data_unpacked/{experiment_name}/checkpoints"
         os.makedirs(checkpoint_dir, exist_ok=True)
         logger = create_logger(experiment_dir)
         logger.info(f"Experiment directory created at {experiment_dir}")
@@ -191,7 +206,7 @@ def main(args):
     # Setup optimizer (we used default Adam betas=(0.9, 0.999) and a constant learning rate of 1e-4 in our paper):
     opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0)
 
-    ckpt_path = get_latest_checkpoint(checkpoint_dir)
+    ckpt_path = get_latest_checkpoint(checkpoint_dir, checkpoint_dir_potential_previous)
     if ckpt_path:
         state_dict = torch.load(ckpt_path, map_location=lambda storage, loc: storage, weights_only=False)
         model.module.load_state_dict(state_dict["model"])
