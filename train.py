@@ -55,8 +55,6 @@ def get_latest_checkpoint(dir_path: str) -> str | None:
             if step > max_step:
                 max_step = step
                 latest_ckpt = os.path.join(dir_path, fname)
-                print(hui)
-    print(hui)
 
     return latest_ckpt
 
@@ -201,6 +199,8 @@ def main(args):
         opt.load_state_dict(state_dict["opt"])
         args = state_dict["args"]
         train_steps, start_epoch = state_dict["train_steps"], state_dict["epoch"]
+        print('Downloaded')
+        print(hui)
     else:
         train_steps = 0
         start_epoch = 0
