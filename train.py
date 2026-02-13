@@ -29,7 +29,7 @@ from models import SiT_models
 from download import find_model
 from transport import create_transport, Sampler
 from diffusers.models import AutoencoderKL
-from train_utils import parse_transport_args
+from train_utils import parse_transport_args, create_dataloader, np_chw_to_pil
 import cv2
 from util.fid import calculate_fid
 import shutil
@@ -116,6 +116,9 @@ def create_logger(logging_dir):
         logger.addHandler(logging.NullHandler())
     return logger
 
+class Identity:
+    def __call__(self, x):
+        return x
 
 def center_crop_arr(pil_image, image_size):
     """
@@ -220,29 +223,34 @@ def main(args):
 
     # Setup data:
     transform = transforms.Compose([
+        transforms.Lambda(np_chw_to_pil) if not os.path.exists(args.data_path) else Identity(),
         transforms.Lambda(lambda pil_image: center_crop_arr(pil_image, args.image_size)),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True)
     ])
-    dataset = ImageFolder(args.data_path, transform=transform)
-    sampler = DistributedSampler(
-        dataset,
-        num_replicas=dist.get_world_size(),
-        rank=rank,
-        shuffle=True,
-        seed=args.global_seed
-    )
-    loader = DataLoader(
-        dataset,
-        batch_size=local_batch_size,
-        shuffle=False,
-        sampler=sampler,
-        num_workers=args.num_workers,
-        pin_memory=True,
-        drop_last=True
-    )
-    logger.info(f"Dataset contains {len(dataset):,} images ({args.data_path})")
+    
+    if os.path.exists(args.data_path):
+        dataset = ImageFolder(args.data_path, transform=transform)
+        sampler = DistributedSampler(
+            dataset,
+            num_replicas=dist.get_world_size(),
+            rank=rank,
+            shuffle=True,
+            seed=args.global_seed
+        )
+        loader = DataLoader(
+            dataset,
+            batch_size=local_batch_size,
+            shuffle=False,
+            sampler=sampler,
+            num_workers=args.num_workers,
+            pin_memory=True,
+            drop_last=True
+        )
+        logger.info(f"Dataset contains {len(dataset):,} images ({args.data_path})")
+    else:
+        loader = create_dataloader(args.yt_config_path, local_batch_size)
 
     # Prepare models for training:
     update_ema(ema, model.module, decay=0)  # Ensure EMA is initialized with synced weights
@@ -274,9 +282,16 @@ def main(args):
 
     logger.info(f"Training for {args.epochs} epochs...")
     for epoch in range(start_epoch, args.epochs):
-        sampler.set_epoch(epoch)
+        if os.path.exists(args.data_path):
+            sampler.set_epoch(epoch)
         logger.info(f"Beginning epoch {epoch}...")
-        for x, y in loader:
+
+        for batch in loader:
+            if not os.path.exists(args.data_path):
+                x = torch.stack([transform(img) for img in batch['image']])
+                y = torch.tensor(batch['label'])
+            else:
+                x, y = batch
             x = x.to(device)
             y = y.to(device)
             with torch.no_grad():
@@ -339,6 +354,9 @@ def main(args):
                     dist.all_gather_into_tensor(out_samples, samples)
 
                 logging.info("Generating EMA samples done.")
+            
+            if train_steps % len(loader) == 0:
+                break
 
     model.eval() 
 

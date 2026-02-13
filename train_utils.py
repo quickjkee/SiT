@@ -1,3 +1,21 @@
+import yaml
+import numpy as np
+from PIL import Image
+from omegaconf import OmegaConf
+from yt_tools.utils import instantiate_from_config
+
+def np_chw_to_pil(img: np.ndarray) -> Image.Image:
+    # if channel-first (C,H,W), convert to (H,W,C)
+    if img.ndim == 3 and img.shape[0] in (1, 3, 4) and img.shape[0] != img.shape[-1]:
+        img = np.transpose(img, (1, 2, 0))
+    return Image.fromarray(img)
+
+def create_dataloader(dataloader_config_path: str, batch_size: int, skip_rows=0):
+    with open(dataloader_config_path) as f:
+        dataloader_config = OmegaConf.create(yaml.load(f, Loader=yaml.SafeLoader))
+    dataloader_config["params"]["batch_size"] = batch_size
+    return instantiate_from_config(dataloader_config, skip_rows=skip_rows)
+
 def none_or_str(value):
     if value == 'None':
         return None
