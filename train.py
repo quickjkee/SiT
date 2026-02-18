@@ -250,7 +250,7 @@ def main(args):
         )
         logger.info(f"Dataset contains {len(dataset):,} images ({args.data_path})")
     else:
-        loader = create_dataloader(args.yt_config_path, local_batch_size)
+        loader = create_dataloader('configs/imagenet_yt_config.yaml', local_batch_size)
 
     # Prepare models for training:
     update_ema(ema, model.module, decay=0)  # Ensure EMA is initialized with synced weights
