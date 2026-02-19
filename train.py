@@ -195,7 +195,8 @@ def main(args):
                         f"{args.path_type}-{args.prediction}-{args.loss_weight}"
         experiment_dir = f"{args.results_dir}/{experiment_name}"  # Create an experiment folder
         checkpoint_dir = f"{experiment_dir}/checkpoints"  # Stores saved model checkpoints
-        checkpoint_dir_potential_previous = f"/slot/sandbox/d/in/data/0_data_unpacked/{experiment_name}/checkpoints"
+        potential_previous = os.environ.get("SNAPSHOT_PATH")
+        checkpoint_dir_potential_previous = f"{potential_previous}/{experiment_name}/checkpoints"
         os.makedirs(checkpoint_dir, exist_ok=True)
         logger = create_logger(experiment_dir)
         logger.info(f"Experiment directory created at {experiment_dir}")
