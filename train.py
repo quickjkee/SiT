@@ -245,16 +245,15 @@ def main(args):
         train_steps = 0
         start_epoch = 0
 
-    # Setup data:
-    transform = transforms.Compose([
-        transforms.Lambda(np_chw_to_pil) if not os.path.exists(args.data_path) else Identity(),
-        transforms.Lambda(lambda pil_image: center_crop_arr(pil_image, args.image_size)),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True)
-    ])
     
+    # Setup data:
     if os.path.exists(args.data_path):
+        transform = transforms.Compose([
+            transforms.Lambda(lambda pil_image: center_crop_arr(pil_image, args.image_size)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True)
+        ])
         dataset = ImageFolder(args.data_path, transform=transform)
         sampler = DistributedSampler(
             dataset,
@@ -312,7 +311,7 @@ def main(args):
 
         for batch in loader:
             if not os.path.exists(args.data_path):
-                x = torch.stack([transform(img) for img in batch['image']])
+                x = batch['image']
                 y = torch.tensor(batch['label'])
             else:
                 x, y = batch
