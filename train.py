@@ -42,6 +42,30 @@ import shutil
 #                             Training Helper Functions                         #
 #################################################################################
 
+def keep_last_k_checkpoints(checkpoint_dir: str, k: int = 3, pattern: str = "*.pt"):
+    # Find all checkpoint files
+    paths = glob(os.path.join(checkpoint_dir, pattern))
+
+    def step_from_name(p):
+        # expects .../0000123.pt
+        base = os.path.basename(p)
+        stem, _ = os.path.splitext(base)
+        try:
+            return int(stem)
+        except ValueError:
+            # if filename isn't numeric, treat it as very old
+            return -1
+
+    # Sort by train step ascending, then remove all but last k
+    paths_sorted = sorted(paths, key=step_from_name)
+    to_delete = paths_sorted[:-k] if len(paths_sorted) > k else []
+
+    for p in to_delete:
+        try:
+            os.remove(p)
+        except OSError:
+            pass  # or log
+
 def get_latest_checkpoint(dir_path: str, checkpoint_dir_potential_previous) -> str | None:
     pattern = re.compile(r'^(\d{7})\.pt$')
     max_step = -1
@@ -336,6 +360,7 @@ def main(args):
                     }
                     checkpoint_path = f"{checkpoint_dir}/{train_steps:07d}.pt"
                     torch.save(checkpoint, checkpoint_path)
+                    keep_last_k_checkpoints(checkpoint_dir, k=3, pattern="*.pt")
                     copy_out_to_snapshot(args.results_dir)
                     logger.info(f"Saved checkpoint to {checkpoint_path}")
                 dist.barrier()
