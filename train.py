@@ -404,7 +404,7 @@ if __name__ == "__main__":
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--log-every", type=int, default=100)
     parser.add_argument("--eval_freq", type=int, default=20)
-    parser.add_argument("--ckpt-every", type=int, default=100_000)
+    parser.add_argument("--ckpt-every", type=int, default=20_000)
     parser.add_argument("--sample-every", type=int, default=10_000)
     parser.add_argument("--cfg-scale", type=float, default=1.5)
     parser.add_argument("--in", type=float, default=4.0)
