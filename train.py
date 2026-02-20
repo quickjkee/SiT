@@ -239,7 +239,7 @@ def main(args):
         model.module.load_state_dict(state_dict["model"])
         ema.load_state_dict(state_dict["ema"])
         opt.load_state_dict(state_dict["opt"])
-        args = state_dict["args"]
+        #args = state_dict["args"]
         train_steps, start_epoch = state_dict["train_steps"], state_dict["epoch"]
         print('Downloaded')
     else:
